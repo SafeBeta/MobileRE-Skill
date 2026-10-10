@@ -271,6 +271,20 @@ FP.patchBatch([
 - **绕过方案**: Hook `javax.net.ssl.TrustManager` 的 `checkServerTrusted` / `checkClientTrusted` 使其不做任何校验直接返回；如果已 hook OkHttp（走 `ssl_plaintext`），但证书校验在更底层 TrustManager 层执行，需同时 hook
 - **注意**: `ssl_plaintext` 模块 hook 的是 OkHttp/Retrofit 的请求/响应体，若 SSL Pinning 在 TrustManager 层先拦截会导致 OkHttp 层拿不到连接；需优先过 TrustManager 再配合 `ssl_plaintext` 抓明文
 
+### 模式 8: 启动期 hook 扫描（业务类方法 hook 被击杀）
+
+- **症状**: 注入本身正常、无脚本可长期存活；**一旦安装业务类方法 hook**（如 `okhttp3.*`、应用密钥/加密类）**3~6s 内静默闪退**；SIGSEGV，崩溃线程常为 `pool-6-thread-*` 或主线程，栈落壳代码（`memfd:xjd-cache` → `CallStaticVoidMethod/CallNonvirtualObjectMethod` NULL jmethodID）
+- **检测原理**: 加固壳在启动期（约 T+3~6s 窗口）扫描方法表 / 其监控清单，发现被 hook 的方法即触发壳内调度崩死（伪装成普通崩溃）
+- **判定（三连）**:
+  1. 无脚本 spawn 对照 → 长期存活
+  2. 立即安装单个业务类 hook → 复现 3~6s 闪退（`exit_blocker` 无 BLOCKED，属击杀非退出）
+  3. 同一 hook 延迟 T+6~15s 安装 → 存活
+- **绕过方案（针对性对策，非通例）**:
+  - 常规目标：直接安装即可，无需延迟
+  - 该类目标：业务类 hook 一律延迟到 T+6~15s 安装（用 `setTimeout` 包安装函数，或由 runner 层延迟加载）
+  - **boot 类（`org.json` 等）可即时安装（已验证）；选点优先 boot/JNI 点，少挂业务 Java 方法
+- **注意**: 先排除"重签名/二次打包"干扰——该状态下防重打包自校验会秒退且无 tombstone，容易误判为 hook 被杀
+
 ---
 
 ### 追加模板

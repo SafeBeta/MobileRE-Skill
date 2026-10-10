@@ -148,6 +148,8 @@ Android App 的网络通信分 5 层架构，每层 SSL 忽略的检测 API 不�
 | Native curl | `libcurl.so` → `curl_easy_setopt` → `CURLOPT_SSL_VERIFYPEER` | `native_hooker.js` |
 | WebView SSL 清单 | `scripts/checklist/webview_ssl_check.js` | checklist 脚本 |
 
+> **绕过（抓包场景）**：通用多栈绕过用 `scripts/bypass/ssl_unpinning.js`（SSLContext/TrustAll、OkHttp2/3、WebView、HttpsURLConnection、XUtils、httpclientandroidlib、Conscrypt、OpenSSLSocketImpl、TrustKit、Cronet、Appcelerator 共 12 类目）；native TLS/自研国密 SDK（GMSSL 等）不在覆盖内，需 `native_hooker.js`（SSL_CTX_set_verify / SSL_set_verify / curl_easy_setopt）或绕开 TLS 走 hook 层。
+
 ### 检测优先级（金融 App 视角）
 
 | 优先级 | 检测层 | 原因 |

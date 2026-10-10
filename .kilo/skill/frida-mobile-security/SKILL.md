@@ -31,6 +31,9 @@ frida -U -f com.app -l scripts/core/utils.js -l scripts/bypass/exit_blocker.js -
 # HTTP 明文拦截
 frida -U -f com.app -l scripts/core/utils.js -l scripts/monitors/ssl_plaintext.js
 
+# SSL Pinning 通用绕过（Java 多栈；native/国密 TLS 另配 native_hooker）
+frida -U -f com.app -l scripts/core/utils.js -l scripts/bypass/ssl_unpinning.js
+
 # Native 函数发现
 frida -U -f com.app -l scripts/core/utils.js -l scripts/monitors/native_hooker.js
 
@@ -153,6 +156,7 @@ adb shell "su -c 'nohup <设备上 frida-server 路径> -l 127.0.0.1:8888 > /dev
 | `dlsym_tracer.js` | 追踪运行时符号解析 | anti-detection |
 | `so_loader_tracer.js` | 记录 do_dlopen 路径+基址 | anti-detection |
 | `root_bypass.js` | Root 检测绕过（File.exists/系统属性） | anti-detection |
+| `ssl_unpinning.js` | SSL Pinning 通用绕过（SSLContext/OkHttp2·3/WebView/Conscrypt/TrustKit/Cronet 等 12 类目，纯 Java 层） | crypto-hook |
 
 ### utils/（Frida 内存工具，JS）
 

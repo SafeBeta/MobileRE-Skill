@@ -34,6 +34,24 @@
 | 进程退出但无 BLOCKED | SVC #0 内联 exit_group | anti-detection.md 分支 B |
 | 主进程存活但 logcat 有子进程 SIGSEGV | 反调试 fork 子进程自杀（ptrace 自检等） | 别判「Frida 导致闪退」：`ps` 确认主 PID 存活，再看子进程崩溃栈 |
 | 函数中部 inline hook 后 SIGABRT（stack corruption） | Frida trampoline 干扰栈 canary / 完整性自检 | 优先 hook 函数入口；必须看中部时改用 Stalker 观察（不改指令） |
+| 加载脚本本身正常，但一触发某功能/被 hook 的方法就 SIGSEGV | Java hook 打到「回填/Dex2C」壳保护方法（壳 JNI 调度 NULL jmethodID 与 trampoline 冲突） | 见下「壳保护方法 hook 闪退」小节；改 hook 框架层/副作用点 |
+| attach（-n/-p）报 ProcessNotFoundError、frida-ps 不列出目标 | App 对 frida 枚举隐身（≠ 反注入检测） | 改用 spawn（-f）；见下小节 |
+
+### 壳保护方法 hook 闪退（加载不崩、触发即崩）
+
+**症状：** frida 加载脚本阶段完全正常（无检测弹窗、进程存活），但执行到某个被 hook 的方法时进程 SIGSEGV/SIGABRT。
+
+**判定（先排除"检测"误判）：**
+1. 加载脚本存活 = 无入口级检测；崩溃只发生在触发功能时 → 抓 tombstone
+2. 典型特征：`art::InvokeWithVarArgs → JNI::CallStaticVoidMethod`（jmethodID=NULL），调用方落在 `/memfd:*`（壳 JNI 缓存）或 `libexecmain`/`libDexHelper` 等壳 so → **hook 打了壳保护方法**
+3. 与「检测」区分：检测通常表现为加载后立即退出/弹窗/`exit_blocker` 有 BLOCKED；此类崩溃无 BLOCKED、无检测提示
+
+**对策：**
+- 不要直接 Java hook 壳保护（回填/Dex2C）方法；改 hook **框架层或副作用点**：`WebView.loadUrl`、`Activity.startActivity`、`Cipher`、`File IO`、网络层等
+- 二分法：先上最小框架层 hook 集复测存活（alive=True），再逐个加回定位
+- 必须观察被保护方法行为时，优先 hook 其**调用方/被调用方（框架层）**而非本体
+
+**附：attach 失败 ≠ 检测。** App 对 frida 枚举隐身时 `frida-ps` 不列出、`-n`/`-p` 全报 `ProcessNotFoundError`；`-f` spawn 正常——属枚举/附着限制，不代表有反注入。
 
 ---
 

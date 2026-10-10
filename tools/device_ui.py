@@ -9,7 +9,7 @@
   python3 device_ui.py launch <pkg> | clear | stayon [on|off] | wake [--unlock]
   python3 device_ui.py swipe 540 1500 540 500 [--ms 300]
   python3 device_ui.py key BACK|HOME|ENTER|TAB|67                     # 名称或数字 keycode
-  python3 device_ui.py shot [--out <file.png>]                        # 默认 shot_<时间戳>.png
+  python3 device_ui.py shot [--out <file.png>]                        # 默认 <前台包名>/shot_<时间戳>.png
   python3 device_ui.py logs [--grep REGEX] [--tail 200] [--clear]
   python3 device_ui.py foreground | size
 """
@@ -156,6 +156,24 @@ def foreground():
     return ""
 
 
+def foreground_pkg():
+    """从前台窗口/Activity 行解析包名（mCurrentFocus=null 时用 mResumedActivity）；失败返回空串。"""
+    for _ in range(3):
+        cands = [foreground()]
+        _, out = adb(["shell", "dumpsys", "activity", "activities"])
+        for ln in out.splitlines():
+            if "mResumedActivity" in ln or "topResumedActivity" in ln:
+                cands.append(ln.strip())
+        for ln in cands:
+            m = re.search(r"\bu0 ([A-Za-z0-9._]+)/[A-Za-z0-9._$]+", ln)
+            if not m:
+                m = re.search(r"([A-Za-z0-9._]+)/[A-Za-z0-9._$]+", ln)
+            if m:
+                return m.group(1)
+        time.sleep(0.5)
+    return ""
+
+
 def main():
     ap = argparse.ArgumentParser(description="设备交互套件（adb 封装）")
     sub = ap.add_subparsers(dest="cmd", metavar="<操作>")
@@ -201,7 +219,7 @@ def main():
     p = sub.add_parser("key", help="按键（名称或 keycode 数字）")
     p.add_argument("name")
 
-    p = sub.add_parser("shot", help="截图（默认 shot_<时间戳>.png）")
+    p = sub.add_parser("shot", help="截图（默认存 <前台包名>/shot_<时间戳>.png；--out 指定路径/文件名）")
     p.add_argument("--out", default="")
 
     p = sub.add_parser("logs", help="设备 logcat")
@@ -355,8 +373,19 @@ def main():
         return rc
 
     if args.cmd == "shot":
-        out_path = args.out or ("shot_%s.png" % time.strftime("%Y%m%d_%H%M%S"))
+        if args.out:
+            out_path = args.out
+        else:
+            pkg = foreground_pkg()
+            out_dir = os.path.join(os.getcwd(), pkg) if pkg else os.getcwd()
+            if pkg:
+                os.makedirs(out_dir, exist_ok=True)
+            out_path = os.path.join(out_dir, "shot_%s.png" % time.strftime("%Y%m%d_%H%M%S"))
         rc, _ = adb(["exec-out", "screencap", "-p"], binary_stdout=out_path)
+        if rc == 0 and os.path.getsize(out_path) == 0:
+            os.remove(out_path)
+            print("screencap 空输出（设备息屏或前台窗口 FLAG_SECURE 防截屏；可先 wake / 切到非受保护页）；已清理空文件")
+            return 1
         if rc == 0:
             print(os.path.abspath(out_path))
         else:
