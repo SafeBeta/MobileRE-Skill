@@ -5,7 +5,7 @@
 **一个让 AI Agent（Kilo）真正"会逆向"的完整技能系统** —— 不只是 Frida 脚本，而是覆盖静态分析、动态分析、脱壳、反检测、Native 逆向、安全合规的完整逆向工作流。
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v0.6.0-2ea44f?style=flat-square)](https://github.com/index-login/MobileRE-Skill/releases)
+[![Version](https://img.shields.io/badge/Version-v0.7.0-2ea44f?style=flat-square)](https://github.com/index-login/MobileRE-Skill/releases)
 [![Android](https://img.shields.io/badge/Android-3DDC84?style=flat-square&logo=android&logoColor=white)](https://developer.android.com/)
 [![Frida](https://img.shields.io/badge/Frida-FF6B57?style=flat-square&logo=frida&logoColor=white)](https://frida.re/)
 [![Python](https://img.shields.io/badge/Python-3.9+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
@@ -47,7 +47,7 @@
 
 - 🧠 **Agent 大脑**（`.kilo/agent/reverser.md`）— 逆向分析角色定义，按决策树自动选模块
 - 📚 **领域知识**（`references/` 项目级 wiki + `.kilo/skill/`）— 9 大技巧域手册（全量索引 `_index.md`）+ 动态分析总控 + Native 深度能力（符号/结构恢复、离线模拟执行、内存 DEX 脱壳）
-- 🔧 **能力单元**（`scripts/`）— 24 个 Frida 模块（monitors 15 + bypass 9）+ 22 个独立工具 + 检测清单
+- 🔧 **能力单元**（`scripts/`）— 25 个 Frida 模块（monitors 15 + bypass 10）+ 22 个独立工具 + 检测清单
 - 🛠️ **合规检测** — 注入、调试、WebView SSL、APK 元数据/签名
 - 🔌 **MCP 集成**（`kilo.json`）— jadx-mcp（Java 反编译）+ ghidra-mcp（二进制分析）
 
@@ -71,11 +71,11 @@
 │                 AI Agent (Kilo)                             │
 │  .kilo/agent/reverser.md  — Agent 角色定义                  │
 │  .kilo/skill/.../SKILL.md — 任务路由 + 决策树 + 模块索引    │
-│  feedback/FEEDBACK.md     — agent 级反馈闭环（项目根）              │
+│  feedback/FEEDBACK.md     — agent 级反馈闭环（项目根）       │
 ├────────────────────────────────────────────────────────────┤
 │               Frida 动态 Hook 模块（skill scripts/）        │
 │  monitors/ (15 个) — 纯观察，不修改行为                     │
-│  bypass/   (9 个)  — 主动干预，修改 app 行为                │
+│  bypass/   (10 个) — 主动干预，修改 app 行为                │
 │  utils/            — 内存 dump / 运行时 JS 工具             │
 ├────────────────────────────────────────────────────────────┤
 │               独立工具（项目根 tools/）                      │
@@ -126,7 +126,7 @@ MobileRE-Skill/
 │       │   └── scripts/             # Frida JS 模块（由 frida -l 加载）
 │       │       ├── core/utils.js        # 公共工具（始终首个加载）
 │       │       ├── monitors/            # 15 个监控模块（纯观察）
-│       │       ├── bypass/              # 9 个干预模块（反检测等）
+│       │       ├── bypass/              # 10 个干预模块（反检测等）
 │       │       ├── utils/               # 内存 dump JS（so_dump / dex_* / codeitem）
 │       │       ├── checklist/           # 检测清单脚本
 │       │       └── templates/           # 模板（analysis.py / custom_hook.js）

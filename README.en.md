@@ -5,7 +5,7 @@
 **A complete RE skill system that turns an AI Agent (Kilo) into a real reverse engineer** — not just Frida scripts, but a full workflow covering static analysis, dynamic analysis, unpacking, anti-detection bypass, native reversing, and security compliance.
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-v0.6.0-2ea44f?style=flat-square)](https://github.com/index-login/MobileRE-Skill/releases)
+[![Version](https://img.shields.io/badge/Version-v0.7.0-2ea44f?style=flat-square)](https://github.com/index-login/MobileRE-Skill/releases)
 [![Android](https://img.shields.io/badge/Android-3DDC84?style=flat-square&logo=android&logoColor=white)](https://developer.android.com/)
 [![Frida](https://img.shields.io/badge/Frida-FF6B57?style=flat-square&logo=frida&logoColor=white)](https://frida.re/)
 [![Python](https://img.shields.io/badge/Python-3.9+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
@@ -47,7 +47,7 @@ A **complete RE agent skill system**, not a script collection:
 
 - 🧠 **Agent brain** (`.kilo/agent/reverser.md`) — RE role definition, auto-selects modules via the decision tree
 - 📚 **Domain knowledge** (`references/` project wiki + `.kilo/skill/`) — 9 technique domain manuals (full index in `_index.md`) + dynamic analysis control + native deep-dive capabilities (symbol/struct recovery, offline emulation, in-memory DEX dump)
-- 🔧 **Capability units** (`scripts/`) — 24 Frida modules (monitors 15 + bypass 9) + 22 standalone tools + checklists
+- 🔧 **Capability units** (`scripts/`) — 25 Frida modules (monitors 15 + bypass 10) + 22 standalone tools + checklists
 - 🛠️ **Compliance detection** — injection, debugging, WebView SSL, APK metadata/signature
 - 🔌 **MCP integration** (`kilo.json`) — jadx-mcp (Java decompile) + ghidra-mcp (binary analysis)
 
@@ -75,7 +75,7 @@ A **complete RE agent skill system**, not a script collection:
 ├────────────────────────────────────────────────────────────┤
 │               Frida Dynamic Hook Modules (skill scripts/)   │
 │  monitors/ (15) — observe only, no behavior modification    │
-│  bypass/   (9)  — actively modify app behavior              │
+│  bypass/   (10) — actively modify app behavior              │
 │  utils/            — in-memory dump / runtime JS tools      │
 ├────────────────────────────────────────────────────────────┤
 │               Standalone Tools (tools/ at repo root)        │
@@ -126,7 +126,7 @@ MobileRE-Skill/
 │       │   └── scripts/             # Frida JS modules (loaded via frida -l)
 │       │       ├── core/utils.js        # Common utils (always loaded first)
 │       │       ├── monitors/            # 15 monitoring modules (observe only)
-│       │       ├── bypass/              # 9 intervention modules (anti-detection etc.)
+│       │       ├── bypass/              # 10 intervention modules (anti-detection etc.)
 │       │       ├── utils/               # In-memory dump JS (so_dump / dex_* / codeitem)
 │       │       ├── checklist/           # Check items
 │       │       └── templates/           # Templates (analysis.py / custom_hook.js)
