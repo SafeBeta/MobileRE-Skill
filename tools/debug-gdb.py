@@ -7,8 +7,10 @@
 import argparse
 import os
 import re
+import signal
 import subprocess
 import sys
+import tempfile
 import time
 
 CONFIG = dict(
@@ -19,6 +21,7 @@ CONFIG = dict(
     gdb_launcher=os.path.join(os.path.dirname(os.path.abspath(__file__)), "gdb-aarch64.cmd"),
     gdb_script=os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug.gdb"),
     attach_tries=4,
+    trace_seconds=12,
 )
 
 C_RESULT = {"ok": True}
@@ -103,20 +106,95 @@ def gdbserver_attached(pid):
     return False, proc
 
 
-def report_antidebug(pkg, pid, evidence):
+def report_antidebug(pkg, pid, died_after, tp_before, tp_after, sig=None):
     print()
-    print("=" * 44)
-    print("  检测结论: 存在 ptrace 反调试保护")
-    print("=" * 44)
-    print("  目标: %s (PID: %d)" % (pkg, pid))
-    print("  证据: %s" % evidence)
-    print("=" * 44)
+    print("=" * 50)
+    print("  检测结论: 存在反调试（App 闪退）")
+    print("=" * 50)
+    print("  包名        : %s" % pkg)
+    print("  TracerPid   : %s -> %s (gdbserver 附加) -> 进程消失" % (tp_before, tp_after))
+    if died_after is not None:
+        print("  运行表现    : GDB 会话第 %.1f 秒进程消失（App 闪退）" % died_after)
+    else:
+        print("  运行表现    : 进程消失（App 闪退）")
+    if sig:
+        print("  GDB 信号    : %s" % sig)
+    print("  判据        : pidof 中进程消失，GDB 连接仍存活")
+    print("=" * 50)
     return 1
+
+
+def make_gdb_script():
+    with open(CONFIG["gdb_script"], "r", encoding="utf-8") as f:
+        script = f.read()
+    fd, path = tempfile.mkstemp(prefix="re_debug_", suffix=".gdb")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(script)
+    return path
+
+
+def find_gdb_exe():
+    for root in (os.environ.get("ANDROID_NDK_HOME"), os.environ.get("NDK_ROOT"),
+                 r"C:\Users\Administrator\AppData\Local\Android\Sdk\ndk\21.4.7075529"):
+        if not root:
+            continue
+        p = os.path.join(root, "prebuilt", "windows-x86_64", "bin", "gdb.exe")
+        if os.path.exists(p):
+            return p
+    return None
+
+
+def start_gdb(script_path):
+    gdb_exe = find_gdb_exe()
+    fd, out_path = tempfile.mkstemp(prefix="re_gdb_out_", suffix=".log")
+    os.close(fd)
+    creationflags = 0
+    if os.name == "nt":
+        creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    out_f = open(out_path, "wb")
+    if gdb_exe:
+        cmd = [gdb_exe, "-batch", "-x", script_path]
+        kwargs = {}
+    else:
+        cmd = '"%s" -batch -x "%s"' % (CONFIG["gdb_launcher"], script_path)
+        kwargs = {"shell": True}
+    proc = subprocess.Popen(cmd, stdout=out_f, stderr=subprocess.STDOUT,
+                            creationflags=creationflags, **kwargs)
+    return proc, out_path, out_f
+
+
+def stop_gdb(proc, out_path, out_f):
+    if proc.poll() is None:
+        # 进程刚死时 GDB 会自行打印 termination 信号并退出，先给它落盘时间
+        try:
+            proc.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            pass
+    if proc.poll() is None:
+        try:
+            proc.send_signal(signal.CTRL_BREAK_EVENT)
+        except Exception:
+            pass
+        try:
+            proc.wait(timeout=6)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
+    out_f.close()
+    with open(out_path, "r", encoding="utf-8", errors="replace") as f:
+        text = f.read()
+    try:
+        os.unlink(out_path)
+    except OSError:
+        pass
+    return text, proc.returncode
 
 
 def main():
     parser = argparse.ArgumentParser(description="GDB 原生调试验证")
     parser.add_argument("pkg", help="目标包名")
+    parser.add_argument("-v", "--verbose", action="store_true",
+                        help="打印 GDB 原始输出（默认只打结论摘要，便于截图）")
     args = parser.parse_args()
     pkg = args.pkg
     port = CONFIG["port"]
@@ -151,11 +229,13 @@ def main():
     if tp_before == 0:
         print("  状态: 未被调试 - 干净")
     else:
-        print("  状态: 已被 PID %s 跟踪! 外部 ptrace 工具将无法附加。" % tp_before)
         print()
-        print("=" * 44)
-        print("  检测结论: 存在 ptrace 反调试")
-        print("=" * 44)
+        print("=" * 50)
+        print("  检测结论: 存在反调试（进程已被跟踪）")
+        print("=" * 50)
+        print("  包名        : %s (PID %d)" % (pkg, pid))
+        print("  TracerPid   : %s（非 0，已被其他调试器占用）" % tp_before)
+        print("=" * 50)
         return 1
     print()
 
@@ -205,58 +285,64 @@ def main():
         print("[成功] 端口 %d 转发完成" % port)
         print()
 
-        print("[5/7] GDB 连接并执行调试操作...")
+        print("[5/7] GDB 连接：状态取证 + 运行态放行观察 %d 秒..." % CONFIG["trace_seconds"])
         print()
-        print("=" * 44)
-        print("  以下为 GDB 原始输出")
-        print("  这是调试能力的关键证据")
-        print("=" * 44)
-        print()
-        gdb_r = subprocess.run(
-            '"%s" -batch -x "%s"' % (CONFIG["gdb_launcher"], CONFIG["gdb_script"]),
-            shell=True, text=True, encoding="utf-8", errors="replace")
-        print()
-        print("=" * 44)
-        print("  调试会话结束")
-        print("=" * 44)
-        print()
-        if gdb_r.returncode != 0:
-            print("[警告] GDB 返回码 %d - 可能存在反调试" % gdb_r.returncode)
+        script_path = make_gdb_script()
+        proc, out_path, out_f = start_gdb(script_path)
+        died_after = None
+        t0 = time.time()
+        try:
+            while time.time() - t0 < CONFIG["trace_seconds"]:
+                if proc.poll() is not None:
+                    break
+                if pid not in device_pids(pkg):
+                    died_after = time.time() - t0
+                    break
+                time.sleep(0.5)
+            alive_at_end = pid in device_pids(pkg)
+            if not alive_at_end and died_after is None:
+                died_after = time.time() - t0
+        finally:
+            out, gdb_rc = stop_gdb(proc, out_path, out_f)
+            try:
+                os.unlink(script_path)
+            except OSError:
+                pass
+        if args.verbose:
+            print(out)
+            if gdb_rc != 0:
+                print("[信息] GDB 返回码 %d" % gdb_rc)
+            print()
 
-        print("[6/7] 反调试检测 - 等待 5 秒...")
-        print("  如果目标存在反调试，此时会自行终止")
-        time.sleep(5)
-        pids_after = device_pids(pkg)
-        if pid not in pids_after:
-            if pids_after:
-                evidence = "调试器附加后原进程 PID %d 已被终止（同包新进程 %s 系自杀后重启，非被调试进程）" % (
-                    pid, ", ".join(str(p) for p in sorted(pids_after)))
-            else:
-                evidence = "调试器附加后进程被终止"
-            return report_antidebug(pkg, pid, evidence)
-        print("[成功] 原调试进程 PID %d 仍存活" % pid)
+        print("[6/7] 运行态反调试判定...")
+        m = re.search(r"Program terminated with signal (SIG[A-Z]+)", out)
+        if not alive_at_end:
+            return report_antidebug(
+                pkg, pid, died_after, tp_before, tp_after,
+                m.group(1) if m else None)
+        print("[成功] 调试器下放行 %d 秒，进程存活" % CONFIG["trace_seconds"])
         print()
 
         print("[7/7] 调试后 TracerPid (应为 0)...")
         tp_after_detach = tracer_pid(pid)
         if tp_after_detach is None:
-            print("  结果: TracerPid = (进程不存在)")
-            return report_antidebug(pkg, pid, "调试后被调试进程 PID %d 不存在，TracerPid 无法读取" % pid)
-        print("  结果: TracerPid = %d" % tp_after_detach)
-        if tp_after_detach == 0:
-            print("  状态: 调试器已干净分离")
-        else:
-            print("  注意: TracerPid 仍为 %d" % tp_after_detach)
-            return report_antidebug(pkg, pid, "调试分离后 TracerPid 仍为 %d" % tp_after_detach)
+            return report_antidebug(pkg, pid, None, tp_before, tp_after)
+        if tp_after_detach != 0:
+            print()
+            print("=" * 50)
+            print("  检测结论: 异常（GDB 分离后 TracerPid 仍为 %d）" % tp_after_detach)
+            print("=" * 50)
+            return 1
         print()
 
-        print("=" * 44)
-        print("  检测结论: 无 ptrace 反调试保护")
-        print("=" * 44)
-        print("  目标: %s (PID: %d)" % (pkg, pid))
-        print("  TracerPid 变化: %s -> %s -> %s" % (tp_before, tp_after, tp_after_detach))
-        print("  调试结束后进程仍正常运行，TracerPid 已恢复为 0")
-        print("=" * 44)
+        print("=" * 50)
+        print("  检测结论: 未发现反调试")
+        print("=" * 50)
+        print("  包名        : %s (PID %d)" % (pkg, pid))
+        print("  TracerPid   : %s -> %s (gdbserver 附加) -> %s (已分离)" % (
+            tp_before, tp_after, tp_after_detach))
+        print("  运行表现    : 调试器下放行 %d 秒，进程存活" % CONFIG["trace_seconds"])
+        print("=" * 50)
         return 0
     finally:
         cleanup_gdbserver()
